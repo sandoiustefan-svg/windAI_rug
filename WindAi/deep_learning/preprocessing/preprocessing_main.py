@@ -4,13 +4,13 @@ from preprocessing_dl_data_region import Preprocessing_DL_region
 
 
 RAW_INPUTS = {
-    "met_forecast" : "/home4/s5539099/test/data/met_forecast.parquet",
-    "met_nowcast" : "/home4/s5539099/test/data/met_nowcast.parquet",
-    "power" : "/home4/s5539099/test/data/wind_power_per_bidzone.parquet",
-    "meta" : "/home4/s5539099/test/data/windparks_bidzone.csv"
+    "met_forecast" : "windAI_rug/WindAi/given_datasets/met_forecast.parquet",
+    "met_nowcast" : "windAI_rug/WindAi/given_datasets/met_nowcast.parquet",
+    "power" : "windAI_rug/WindAi/given_datasets/wind_power_per_bidzone.parquet",
+    "meta" : "windAI_rug/WindAi/given_datasets/windparks_bidzone.csv"
 }
 
-RAW_OUT_DIR = "/home4/s5539099/test/windAI_rug/WindAi/deep_learning/created_dataset"
+RAW_OUT_DIR = "windAI_rug/WindAi/deep_learning/created_datasets"
 DL_OUT_DIR = RAW_OUT_DIR
 
 def run_raw_preprocess():

@@ -66,7 +66,7 @@ class Preprocessing_DL_region:
 
         return df
 
-    def fit_transform(self, save_path="/home4/s5539099/test/windAI_rug/WindAi/deep_learning/created_dataset"):
+    def fit_transform(self, save_path="windAI_rug/WindAi/deep_learning/created_datasets"):
         df = pd.read_parquet(self.path)
         region_df = df.copy()
 

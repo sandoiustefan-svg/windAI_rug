@@ -87,45 +87,6 @@ class WindowGenerator:
     def test(self):
         return self.make_dataset(self.test_df)
 
-if __name__ == "__main__":
-    df = pd.read_parquet("/home4/s5539099/test/windAI_rug/WindAi/deep_learning/created_dataset/scaled_features_power_MW_ELSPOT NO1.parquet")
-
-    df = df.drop(columns=["time", "bidding_area"], errors="ignore")
-    
-    print(f"Loaded full dataset with shape: {df.shape}")
-    input_width = 48
-    label_width = 61
-    test_size = input_width + label_width
-
-    test_df = df[-test_size:]
-    usable_df = df[:-test_size]
-
-    n_usable = len(usable_df)
-    train_df = usable_df[:int(n_usable * 0.7)]
-    val_df   = usable_df[int(n_usable * 0.7):]
-
-    print(f"\nSplitting:")
-    print(f"Usable data: {usable_df.shape}")
-    print(f"Train: {train_df.shape}")
-    print(f"Validation: {val_df.shape}")
-    print(f"Test (last 85 rows): {test_df.shape}")
-
-
-    window = WindowGenerator(
-        input_width=48,
-        label_width=61,
-        shift=0,
-        train_df=train_df,
-        val_df=val_df,
-        test_df=test_df,
-        label_columns=["power_MW"]
-    )
-
-    for batch_inputs, batch_labels in window.train.take(1):
-        print("Inputs shape:", batch_inputs.shape)
-        print("Labels shape:", batch_labels.shape)
-
-
 
 
 
