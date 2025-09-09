@@ -85,4 +85,13 @@ class WindowGenerator:
 
     @property
     def test(self):
-        return self.make_dataset(self.test_df)    
+        return self.make_dataset(self.test_df)
+
+
+
+
+
+
+
+
+
