@@ -88,7 +88,7 @@ class WindowGenerator:
         return self.make_dataset(self.test_df)
 
 if __name__ == "__main__":
-    df = pd.read_parquet("/home2/s5549329/windAI_rug/WindAi/deep_learning/created_datasets/scaled_features_power_MW_ELSPOT NO1.parquet")
+    df = pd.read_parquet("/home4/s5539099/test/windAI_rug/WindAi/deep_learning/created_dataset/scaled_features_power_MW_ELSPOT NO1.parquet")
 
     df = df.drop(columns=["time", "bidding_area"], errors="ignore")
     
