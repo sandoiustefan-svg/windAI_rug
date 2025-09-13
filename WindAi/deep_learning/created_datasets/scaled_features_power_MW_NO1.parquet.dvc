@@ -1,0 +1,5 @@
+outs:
+- md5: fa4bd2143992eec1e47d831090031c1e
+  size: 20013854
+  hash: md5
+  path: scaled_features_power_MW_NO1.parquet

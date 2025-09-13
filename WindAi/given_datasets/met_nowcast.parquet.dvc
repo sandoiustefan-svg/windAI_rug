@@ -1,0 +1,5 @@
+outs:
+- md5: 32bc9cfb1357ffb1d61ae8c3555a276b
+  size: 79805153
+  hash: md5
+  path: met_nowcast.parquet
