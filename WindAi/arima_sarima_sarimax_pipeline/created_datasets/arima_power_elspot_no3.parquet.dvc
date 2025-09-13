@@ -1,0 +1,5 @@
+outs:
+- md5: 6dc13bfe6b6f65fb6fe71d4a278157ef
+  size: 2062063
+  hash: md5
+  path: arima_power_elspot_no3.parquet
