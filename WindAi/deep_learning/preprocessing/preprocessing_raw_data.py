@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import numpy as np
+import re
 
 
 def reshape_power_data(power_df):
@@ -59,7 +60,25 @@ class Preprocessing_raw:
         self.datasets["met_nowcast"] = self.datasets["met_nowcast"][self.datasets["met_nowcast"]["windpark"].isin(common)]
         self.datasets["met_forecast"] = self.datasets["met_forecast"][self.datasets["met_forecast"]["sid"].isin(common)]
 
-    def create_region_dataset(self):
+
+    def create_region_dataset(
+        self,
+        save_dir="WindAi/deep_learning/created_datasets/data_alligned",
+        save_splits=True,
+        also_save_full=True,
+        train_ratio=0.70,
+        val_ratio=0.15,
+        test_ratio=0.15,
+        train_end=None,  
+        val_end=None
+    ):
+        """
+        Builds per-region aggregated datasets, then (optionally) saves
+        chronological train/val/test splits inside each region's folder.
+
+        Returns:
+            dict[str, pd.DataFrame]: {region: full_aggregated_df}
+        """
         df_forecast = self.datasets["met_forecast"]
         df_nowcasting = self.datasets["met_nowcast"]
         df_metadata = self.datasets["meta"]
@@ -68,7 +87,6 @@ class Preprocessing_raw:
         df_power_long = reshape_power_data(df_power)
         df_power_long["bidding_area"] = df_power_long["bidding_area"].str.replace("ELSPOT ", "")
 
-        # Step 1: Compute forecast summary statistics
         forecast_cols_w_speed     = [col for col in df_forecast.columns if "ws10m_" in col]
         forecast_cols_w_direction = [col for col in df_forecast.columns if "wd10m_" in col]
         forecast_cols_t           = [col for col in df_forecast.columns if "t2m_" in col]
@@ -83,24 +101,18 @@ class Preprocessing_raw:
         df_forecast["ws10m_median"] = df_forecast[forecast_cols_w_speed].median(axis=1)
 
         angles_rad = np.radians(df_forecast[forecast_cols_w_direction])
-
-        # Compute circular mean
         mean_angle_rad = np.arctan2(
             np.mean(np.sin(angles_rad), axis=1),
             np.mean(np.cos(angles_rad), axis=1)
         )
         df_forecast["wd10m_mean"] = (np.degrees(mean_angle_rad) + 360) % 360
-
-        # Linear std deviation
         df_forecast["wd10m_std"] = df_forecast[forecast_cols_w_direction].std(axis=1)
-
 
         df_forecast["t2m_mean"]    = df_forecast[forecast_cols_t].mean(axis=1)
         df_forecast["t2m_std"]     = df_forecast[forecast_cols_t].std(axis=1)
         df_forecast["t2m_min"]     = df_forecast[forecast_cols_t].min(axis=1)
         df_forecast["t2m_max"]     = df_forecast[forecast_cols_t].max(axis=1)
         df_forecast["t2m_median"]  = df_forecast[forecast_cols_t].median(axis=1)
-
 
         df_forecast["rh2m_mean"]   = df_forecast[forecast_cols_rh].mean(axis=1)
         df_forecast["rh2m_std"]    = df_forecast[forecast_cols_rh].std(axis=1)
@@ -133,11 +145,8 @@ class Preprocessing_raw:
         df_forecast_avg["time"] = pd.to_datetime(df_forecast_avg["time"])
         print(df_forecast_avg.head(5))
 
-        # Step 2: Rename nowcasting columns
-        df_nowcasting = df_nowcasting.rename(columns={"windpark": "sid"})
-        df_nowcasting = df_nowcasting.reset_index()
+        df_nowcasting = df_nowcasting.rename(columns={"windpark": "sid"}).reset_index()
         df_nowcasting["time"] = pd.to_datetime(df_nowcasting["time"])
-
         df_nowcasting = df_nowcasting.rename(columns={
             "air_temperature_2m": "t2m_now",
             "air_pressure_at_sea_level": "mslp_now",
@@ -148,16 +157,13 @@ class Preprocessing_raw:
         })
         print(df_nowcasting.head(5))
 
-        # Step 3: Merge forecast and nowcasting
         df_merged_weather = pd.merge(df_forecast_avg, df_nowcasting, on=["sid", "time"], how="inner")
         print(df_merged_weather.head(5))
 
-        # Step 4: Metadata cleanup
         df_metadata = df_metadata.rename(columns={"substation_name": "sid"})
         df_metadata["bidding_area"] = df_metadata["bidding_area"].str.replace("ELSPOT ", "")
         print(df_metadata.head(5))
 
-        # Step 5: Add bidding_area to weather
         df_power_long_sid = pd.merge(
             df_power_long,
             df_metadata[["bidding_area", "sid"]],
@@ -168,7 +174,7 @@ class Preprocessing_raw:
 
         df_merged_weather["time"] = pd.to_datetime(df_merged_weather["time"])
         df_power_long_sid["time"] = pd.to_datetime(df_power_long_sid["time"])
-        
+
         df_final_sid = pd.merge(
             df_merged_weather,
             df_power_long_sid[["time", "sid", "power_MW", "bidding_area"]],
@@ -177,26 +183,62 @@ class Preprocessing_raw:
         )
         print(df_final_sid.head(5))
 
-        # Step 7: Aggregate per region
-        df_final = df_final_sid.drop(columns=["sid"])  # we aggregate across all sids per region
+        df_final = df_final_sid.drop(columns=["sid"])
         print(df_final.head(5))
 
         regions = df_final["bidding_area"].unique()
         df_aggregated_regions = {}
 
+        # helper for safe folder names
+        def _safe_name(name: str) -> str:
+            return re.sub(r"[^0-9A-Za-z._-]+", "_", str(name))
+
+        # normalize ratios if needed
+        if train_end is None or val_end is None:
+            total = train_ratio + val_ratio + test_ratio
+            if not np.isclose(total, 1.0):
+                train_ratio, val_ratio, test_ratio = (train_ratio/total,
+                                                    val_ratio/total,
+                                                    test_ratio/total)
+
         for region in regions:
             df_region = df_final[df_final["bidding_area"] == region].copy()
             df_region_agg = df_region.groupby("time").mean(numeric_only=True).reset_index()
+            df_region_agg = df_region_agg.sort_values("time").reset_index(drop=True)
             df_aggregated_regions[region] = df_region_agg
+
+            n = len(df_region_agg)
+            if n < 3 or (train_end is not None and val_end is None):
+                tr, va, te = df_region_agg.copy(), df_region_agg.iloc[0:0].copy(), df_region_agg.iloc[0:0].copy()
+            else:
+                if train_end is not None and val_end is not None:
+                    te_train_end = pd.to_datetime(train_end)
+                    te_val_end = pd.to_datetime(val_end)
+                    tr = df_region_agg[df_region_agg["time"] <= te_train_end]
+                    va = df_region_agg[(df_region_agg["time"] > te_train_end) & (df_region_agg["time"] <= te_val_end)]
+                    te = df_region_agg[df_region_agg["time"] > te_val_end]
+                else:
+                    i1 = int(round(n * train_ratio))
+                    i2 = int(round(n * (train_ratio + val_ratio)))
+                    i1 = max(1, min(n-2, i1))
+                    i2 = max(i1+1, min(n-1, i2))
+                    tr = df_region_agg.iloc[:i1].copy()
+                    va = df_region_agg.iloc[i1:i2].copy()
+                    te = df_region_agg.iloc[i2:].copy()
+
+            if save_splits:
+                region_dir = os.path.join(save_dir, _safe_name(region))
+                os.makedirs(region_dir, exist_ok=True)
+                if also_save_full:
+                    df_region_agg.to_parquet(os.path.join(region_dir, "full.parquet"), index=False)
+                tr.to_parquet(os.path.join(region_dir, "train.parquet"), index=False)
+                va.to_parquet(os.path.join(region_dir, "val.parquet"), index=False)
+                te.to_parquet(os.path.join(region_dir, "test.parquet"), index=False)
+                print(
+                    f"[{region}] saved to {region_dir} -> "
+                    f"full({len(df_region_agg)}), train({len(tr)}), val({len(va)}), test({len(te)})"
+                )
 
         print(f"Aggregated region datasets: {list(df_aggregated_regions.keys())}")
         return df_aggregated_regions
 
-    
-    def save_datasets(self, save_dir="WindAi/deep_learning/created_datasets", **dataframes):
-        os.makedirs(save_dir, exist_ok=True)
-
-        for name, df in dataframes.items():
-            path = os.path.join(save_dir, f"{name}.parquet")
-            df.to_parquet(path, index=False)
-            print(f"Saved '{name}' to: {path}")
