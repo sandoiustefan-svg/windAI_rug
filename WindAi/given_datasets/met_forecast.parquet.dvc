@@ -1,5 +1,0 @@
-outs:
-- md5: 2726518c203ff2235e3b15057a154f93
-  size: 4677750855
-  hash: md5
-  path: met_forecast.parquet

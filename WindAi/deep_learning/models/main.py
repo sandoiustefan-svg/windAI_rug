@@ -3,38 +3,64 @@ from GRU_weak import GruWeak
 from LSTM_main import LSTM
 from transformer import TransformerForecast
 import pandas as pd
-import os
-import sys
+import os, re, sys
+from pathlib import Path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
 from WindAi.deep_learning.preprocessing.preprocess_windowing_region import WindowGenerator
 
-MODEL_REGISTRY =  {
-    #"Gru Deep" : GruDeep,
-    #"Gru Weak" : GruWeak,
-    #"LSTM" : LSTM,
-    "Transformer_0.15": TransformerForecast
+MODEL_REGISTRY = {
+    # "Gru Deep": GruDeep,
+    # "Gru Weak": GruWeak,
+    # "LSTM": LSTM,
+    "Transformer_Masked": TransformerForecast,
 }
 
+HERE     = Path(__file__).resolve()
+DL_ROOT  = HERE.parents[1]                           # .../WindAi/deep_learning
+DATA_DIR = Path(os.environ.get("WIND_CREATED_DIR", DL_ROOT / "created_datasets")).resolve()
+WEIGHT_DIR = (DL_ROOT / "weights").resolve()
+PLOT_DIR   = (DL_ROOT / "results").resolve()
 
-def run(model_class, model_name,input_width=336, label_width=61, epochs=100):
-    shift = 0
-    data_dir   = "windAI_rug/WindAi/deep_learning/created_datasets"
-    weight_dir = "windAI_rug/WindAi/deep_learning/weights"
-    plot_dir   = "windAI_rug/WindAi/deep_learning/results"
+def _region_dirs(base_dir=DATA_DIR):
+    """Return region folders that contain processed train/val/test."""
+    out = []
+    if not os.path.isdir(base_dir):
+        return out
+    for name in sorted(os.listdir(base_dir)):
+        rdir = os.path.join(base_dir, name)
+        proc = os.path.join(rdir, "processed")
+        if os.path.isdir(proc):
+            need = [os.path.join(proc, f"{s}_scaled.parquet") for s in ("train", "val", "test")]
+            if all(os.path.exists(p) for p in need):
+                out.append((name, rdir))
+    return out
 
-    for region_number in range(1, 5):
-        print(f"\n========== Training Region NO{region_number} ==========")
+def _load_processed(region_dir: str, split: str) -> pd.DataFrame:
+    path = os.path.join(region_dir, "processed", f"{split}_scaled.parquet")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Missing file: {path}")
+    return pd.read_parquet(path).drop(columns=["time"], errors="ignore")
 
-        # Load data
-        path = f"{data_dir}/scaled_features_power_MW_NO{region_number}.parquet"
-        df = pd.read_parquet(path).drop(columns=["time"], errors="ignore")
-        
-        n = len(df)
-        train_df = df[:int(n * 0.7)]
-        val_df = df[int(n * 0.7): int(n * 0.85)]
-        test_df = df[int(n * 0.85):]
+def _ensure(*dirs):
+    for d in dirs:
+        os.makedirs(d, exist_ok=True)
 
-        # Create data window
+def run(model_class, model_name, input_width=336, label_width=61, epochs=100, shift=0):
+    regions = _region_dirs(DATA_DIR)
+    if not regions:
+        raise RuntimeError(f"No processed regions found in {DATA_DIR}")
+
+    _ensure(WEIGHT_DIR, PLOT_DIR)
+
+    for region_name, region_dir in regions:
+        print(f"\n========== Training Region {region_name} ==========")
+
+        # Load preprocessed splits
+        train_df = _load_processed(region_dir, "train")
+        val_df   = _load_processed(region_dir, "val")
+        test_df  = _load_processed(region_dir, "test")
+
+        # Windowed datasets
         window = WindowGenerator(
             input_width=input_width,
             label_width=label_width,
@@ -42,40 +68,48 @@ def run(model_class, model_name,input_width=336, label_width=61, epochs=100):
             train_df=train_df,
             val_df=val_df,
             test_df=test_df,
-            label_columns=["power_MW"]
+            label_columns=["power_MW"],
         )
 
-        # Initialize and run model
+        # Region number if name like "NO1"
+        m = re.search(r"(\d+)$", region_name)
+        region_number = int(m.group(1)) if m else None
+
+        # Init model
+        num_features = window.train.element_spec[0].shape[-1]
         model = model_class(
             input_width=input_width,
             label_width=label_width,
-            num_features=window.train.element_spec[0].shape[-1],
+            num_features=num_features,
             region_number=region_number,
-            name=model_name
+            name=model_name,
         )
 
-        model.summary()
-        history = model.fit(window, weight_dir, epochs=epochs)
+        # Per-model/region output dirs
+        out_w = os.path.join(WEIGHT_DIR, model_name, region_name)
+        out_p = os.path.join(PLOT_DIR,   model_name, region_name)
+        _ensure(out_w, out_p)
 
-        # Save forecast plot
+        model.summary()
+        history = model.fit(window, out_w, epochs=epochs)
+
+        # Forecast plot
         pred, y_true = model.predict_test(window, first_batch_only=False)
         model.plot_prediction(
             pred, y_true,
-            os.path.join(plot_dir, f"forecast_NO{region_number}_{model.name}.png")
+            os.path.join(out_p, f"forecast_{region_name}_{model.name}.png"),
         )
 
-        # Save learning curve plot
+        # Learning curves
         model.plot_learning_curves(
             history,
-            os.path.join(plot_dir, f"learning_NO{region_number}_{model.name}.png")
+            os.path.join(out_p, f"learning_{region_name}_{model.name}.png"),
         )
 
-        # Evaluate performance
+        # Evaluate
         model.evaluate_model(window.test, dataset_name="Test")
 
 
 if __name__ == "__main__":
     for model_name, model_class in MODEL_REGISTRY.items():
         run(model_class, model_name)
-
-

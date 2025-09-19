@@ -1,5 +1,0 @@
-outs:
-- md5: dc315f54c3bd5b234ccdc169e58cca24
-  size: 2264693
-  hash: md5
-  path: wind_power_per_bidzone.parquet
