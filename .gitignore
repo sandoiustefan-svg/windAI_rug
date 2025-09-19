@@ -3,8 +3,14 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+slurm-*.out
+WindAi/arima_pipeline/created_datasets/*.parquet
+WindAi/deep_learning/created_datasets/*.parquet
 # C extensions
 *.so
+
+# Ignore all model weight files
+*.pkl
 
 # Distribution / packaging
 .Python
@@ -126,6 +132,12 @@ celerybeat.pid
 
 # SageMath parsed files
 *.sage.py
+
+WindAi/created_datasets/*.parquet
+WindAi/created_datasets/*.csv
+
+WindAi/given_datasets/*.parquet
+WindAi/given_datasets/*.parquet
 
 # Environments
 .env
