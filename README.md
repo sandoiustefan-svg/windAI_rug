@@ -1,4 +1,5 @@
-# windAI_rug 🌬️⚡
+# windAI🌬️⚡
+**📎 Paper:** [Wind AI](paper/windAI_Bogdan.pdf)
 
 An end-to-end **machine learning system for short-term wind power forecasting**, developed for the **Nordic Wind Power Forecasting Contest (Norway)**.
 
